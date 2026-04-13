@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Headlight – Page Cache & Hint Checker</title>
+  <style>
+    body { background: #0e0e0e; color:#e5e5e5; font-family: monospace; margin:0; padding:2rem;}
+    .logo { font-size:2rem; color:#ffcc00; margin-bottom:1rem; }
+    .checker { max-width:600px; background:#1c1c1c; padding:1rem; border-radius:8px; }
+    .checker label { color:#ffcc00; }
+    input { width:100%; padding:0.5rem; margin-top:0.5rem; background:#2a2a2a; border:none; color:#fff; border-radius:4px; }
+    button { background:#ffcc00; color:#1c1c1c; padding:0.5rem 1rem; border:none; border-radius:4px; margin-top:1rem; cursor:pointer;}
+    button:hover { background:#ffd633; }
+    pre { background:#1c1c1c; padding:1rem; border-radius:8px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+    .error { color:#ff5555; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/diff@5.0.0/dist/diff.min.js"></script>
+</head>
+<body>
+  <div class="logo">Headlight</div>
+  <div class="checker">
+    <label for="urlInput">Enter a page URL</label>
+    <input id="urlInput" type="text" placeholder="https://example.com">
+    <button id="checkButton">Check Page</button>
+    <div id="error" class="error"></div>
+  </div>
+  <div id="results" style="display:none;">
+    <p id="timing"></p>
+    <h3>Modified HTML</h3>
+    <pre id="modifiedHtml"></pre>
+    <h3>Diff</h3>
+    <pre id="diffOutput"></pre>
+    <a id="downloadPatch" href="#" download="patch.diff" style="display:none; color:#ffcc00; text-decoration:underline;">Download diff patch</a>
+  </div>
+  <script>
+    function parseHtml(html) {
+      return new DOMParser().parseFromString(html, 'text/html');
+    }
+    function extractDomain(url){
+      try{const u=new URL(url); return u.origin;}catch(e){return '';}
+    }
+    function analyse(doc){
+      const rec={preloads:[], preconnects:[], modules:[]};
+      const img=doc.querySelector('img[src]');
+      if(img){ rec.preloads.push({href: img.getAttribute('src'), as:'image'}); }
+      doc.querySelectorAll('link[rel="stylesheet"][href*="fonts"]').forEach(()=> {
+        rec.preconnects.push({href:'https://fonts.googleapis.com', crossorigin:false});
+        rec.preconnects.push({href:'https://fonts.gstatic.com', crossorigin:true});
+      });
+      doc.querySelectorAll('script[type="module"][src]').forEach(s=>{
+        rec.modules.push({href:s.getAttribute('src')});
+      });
+      return rec;
+    }
+    function buildSnippets(recs){
+      let parts=[];
+      recs.preconnects.forEach(pc=>{parts.push('<link rel="preconnect" href="'+pc.href+'"'+(pc.crossorigin?' crossorigin':'')+'>');});
+      recs.preloads.forEach(pl=>{parts.push('<link rel="preload" href="'+pl.href+'" as="'+pl.as+'">');});
+      recs.modules.forEach(mp=>{parts.push('<link rel="modulepreload" href="'+mp.href+'">');});
+      return parts.join('\n');
+    }
+    function applyChanges(original,snippets){
+      const idx=original.indexOf('</head>');
+      let mod;
+      if(idx>=0) mod=original.slice(0,idx)+'\n'+snippets+'\n'+original.slice(idx);
+      else mod='<head>\n'+snippets+'\n</head>\n'+original;
+      const diff=Diff.createTwoFilesPatch('original.html','modified.html',original,mod,'','');
+      return {mod, diff};
+    }
+    function measureTime(url){
+      return new Promise((resolve,reject)=>{
+        const iframe=document.createElement('iframe');
+        iframe.style.display='none';
+        let start=performance.now();
+        iframe.onload=()=>{resolve(performance.now()-start);iframe.remove();};
+        iframe.onerror=()=>{reject(new Error('load error'));iframe.remove();};
+        iframe.src=url;
+        document.body.appendChild(iframe);
+      });
+    }
+    document.getElementById('checkButton').addEventListener('click', async ()=>{
+      const url=document.getElementById('urlInput').value.trim();
+      const err=document.getElementById('error');
+      err.textContent='';
+      if(!url){ err.textContent='Please enter a URL.'; return;}
+      const results=document.getElementById('results');
+      results.style.display='none';
+      try{
+        const loadPromise=measureTime(url).catch(()=>null);
+        const res=await fetch(url);
+        if(!res.ok) throw new Error('Fetch failed: '+res.status);
+        const text=await res.text();
+        const doc=parseHtml(text);
+        Object.defineProperty(doc,'location',{value:{href:url}});
+        const recs=analyse(doc);
+        const snippets=buildSnippets(recs);
+        const {mod, diff}=applyChanges(text,snippets);
+        document.getElementById('modifiedHtml').textContent=mod;
+        document.getElementById('diffOutput').textContent=diff;
+        const blob=new Blob([diff], {type:'text/plain'});
+        const dl=document.getElementById('downloadPatch');
+        dl.href=URL.createObjectURL(blob);
+        dl.style.display='inline';
+        const t=await loadPromise;
+        if(t!=null) document.getElementById('timing').textContent='Load time: '+Math.round(t)+' ms';
+        results.style.display='block';
+      }catch(e){ err.textContent=e.message; }
+    });
+  </script>
+</body>
+</html>
