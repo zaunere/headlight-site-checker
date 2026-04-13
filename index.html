@@ -1,112 +1,404 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Headlight – Page Cache & Hint Checker</title>
-  <style>
-    body { background: #0e0e0e; color:#e5e5e5; font-family: monospace; margin:0; padding:2rem;}
-    .logo { font-size:2rem; color:#ffcc00; margin-bottom:1rem; }
-    .checker { max-width:600px; background:#1c1c1c; padding:1rem; border-radius:8px; }
-    .checker label { color:#ffcc00; }
-    input { width:100%; padding:0.5rem; margin-top:0.5rem; background:#2a2a2a; border:none; color:#fff; border-radius:4px; }
-    button { background:#ffcc00; color:#1c1c1c; padding:0.5rem 1rem; border:none; border-radius:4px; margin-top:1rem; cursor:pointer;}
-    button:hover { background:#ffd633; }
-    pre { background:#1c1c1c; padding:1rem; border-radius:8px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
-    .error { color:#ff5555; }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/diff@5.0.0/dist/diff.min.js"></script>
-</head>
-<body>
-  <div class="logo">Headlight</div>
-  <div class="checker">
-    <label for="urlInput">Enter a page URL</label>
-    <input id="urlInput" type="text" placeholder="https://example.com">
-    <button id="checkButton">Check Page</button>
-    <div id="error" class="error"></div>
-  </div>
-  <div id="results" style="display:none;">
-    <p id="timing"></p>
-    <h3>Modified HTML</h3>
-    <pre id="modifiedHtml"></pre>
-    <h3>Diff</h3>
-    <pre id="diffOutput"></pre>
-    <a id="downloadPatch" href="#" download="patch.diff" style="display:none; color:#ffcc00; text-decoration:underline;">Download diff patch</a>
-  </div>
-  <script>
-    function parseHtml(html) {
-      return new DOMParser().parseFromString(html, 'text/html');
-    }
-    function extractDomain(url){
-      try{const u=new URL(url); return u.origin;}catch(e){return '';}
-    }
-    function analyse(doc){
-      const rec={preloads:[], preconnects:[], modules:[]};
-      const img=doc.querySelector('img[src]');
-      if(img){ rec.preloads.push({href: img.getAttribute('src'), as:'image'}); }
-      doc.querySelectorAll('link[rel="stylesheet"][href*="fonts"]').forEach(()=> {
-        rec.preconnects.push({href:'https://fonts.googleapis.com', crossorigin:false});
-        rec.preconnects.push({href:'https://fonts.gstatic.com', crossorigin:true});
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Headlight – Page Cache &amp; Hint Checker</title>
+    <!-- Dark retro theme styles -->
+    <style>
+      /* Reset and basic layout */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: "Courier New", monospace;
+      }
+
+      body {
+        background: #0e0e0e;
+        color: #e5e5e5;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 100vh;
+        padding: 2rem;
+        line-height: 1.5;
+      }
+
+      header {
+        margin-bottom: 2rem;
+        text-align: center;
+      }
+
+      .logo {
+        font-size: 2.2rem;
+        font-weight: bold;
+        letter-spacing: 0.2rem;
+        color: #ffcc00;
+        margin-bottom: 0.5rem;
+      }
+
+      .tagline {
+        font-size: 0.9rem;
+        color: #888;
+        font-style: italic;
+      }
+
+      /* Form styling */
+      .checker {
+        width: 100%;
+        max-width: 700px;
+        background: #1c1c1c;
+        padding: 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);
+      }
+
+      .checker label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+        color: #ffcc00;
+      }
+
+      .checker input[type="text"] {
+        width: 100%;
+        padding: 0.5rem;
+        border: none;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+        background: #2a2a2a;
+        color: #fff;
+      }
+
+      .checker button {
+        background: #ffcc00;
+        color: #1c1c1c;
+        padding: 0.6rem 1.2rem;
+        border: none;
+        border-radius: 4px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+
+      .checker button:hover {
+        background: #ffd633;
+      }
+
+      .results {
+        margin-top: 2rem;
+      }
+
+      .results h2 {
+        margin-bottom: 0.5rem;
+        color: #ffcc00;
+      }
+
+      .results pre {
+        background: #1c1c1c;
+        padding: 1rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .results .download-link {
+        display: inline-block;
+        margin-top: 0.5rem;
+        color: #ffcc00;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
+      .error {
+        color: #ff5555;
+        margin-top: 1rem;
+      }
+    </style>
+    <!-- Diff library loaded from CDN. Used to generate unified diffs. -->
+    <script src="https://cdn.jsdelivr.net/npm/diff@5.0.0/dist/diff.min.js"></script>
+  </head>
+  <body>
+    <header>
+      <div class="logo">Headlight</div>
+      <div class="tagline">Shine light on your page’s cache and resource hints</div>
+    </header>
+
+    <div class="checker">
+      <label for="urlInput">Enter a page URL to analyse</label>
+      <input id="urlInput" type="text" placeholder="https://example.com" />
+      <button id="checkButton">Check Page</button>
+      <!-- Initially empty error area. Text will be inserted only on errors -->
+      <div id="error" class="error"></div>
+    </div>
+
+    <div class="results" id="results" style="display: none;">
+      <h2>Analysis &amp; Recommendations</h2>
+      <p id="timing"></p>
+      <h3>Recommended &lt;head&gt; Modifications</h3>
+      <pre id="modifiedHtml"></pre>
+      <a
+        class="download-link"
+        id="downloadPatch"
+        href="#"
+        download="patch.diff"
+        style="display: none;"
+        >Download diff patch</a
+      >
+      <h3>Unified Diff</h3>
+      <pre id="diffOutput"></pre>
+    </div>
+
+    <script>
+      /**
+       * Parse HTML string into a DOM document.
+       * @param {string} html
+       * @returns {Document}
+       */
+      function parseHtml(html) {
+        const parser = new DOMParser();
+        return parser.parseFromString(html, "text/html");
+      }
+
+      /**
+       * Extracts the origin from a URL. Useful for preconnect hints.
+       * @param {string} url
+       * @returns {string}
+       */
+      function extractDomain(url) {
+        try {
+          const u = new URL(url);
+          return u.origin;
+        } catch (e) {
+          return "";
+        }
+      }
+
+      /**
+       * Analyse the document for cache/resource hints and build recommendations.
+       * Returns an object with arrays: preloads (with as type), preconnects, dnsPrefetch, modulePreloads.
+       * @param {Document} doc
+       */
+      function analyseHints(doc) {
+        const recommendations = {
+          preloads: [],
+          preconnects: [],
+          dnsPrefetch: [],
+          modulePreloads: [],
+        };
+
+        // Preload the first hero image (first <img> on page)
+        const firstImg = doc.querySelector("img[src]");
+        if (firstImg) {
+          const imgSrc = firstImg.getAttribute("src");
+          recommendations.preloads.push({ href: imgSrc, as: "image" });
+        }
+
+        // Web font detection: link to Google Fonts or other fonts CSS
+        const linkFonts = Array.from(
+          doc.querySelectorAll(
+            'link[rel="stylesheet"][href*="fonts"], link[rel="stylesheet"][href*="font"]'
+          )
+        );
+        linkFonts.forEach((lnk) => {
+          const href = lnk.getAttribute("href");
+          if (href) {
+            // Preconnect to Google fonts domains
+            recommendations.preconnects.push({ href: "https://fonts.googleapis.com", crossorigin: false });
+            recommendations.preconnects.push({ href: "https://fonts.gstatic.com", crossorigin: true });
+            recommendations.dnsPrefetch.push({ href: "https://fonts.gstatic.com" });
+            recommendations.dnsPrefetch.push({ href: "https://fonts.googleapis.com" });
+          }
+        });
+
+        // Identify ES module scripts for modulepreload
+        const moduleScripts = Array.from(doc.querySelectorAll('script[type="module"][src]'));
+        moduleScripts.forEach((script) => {
+          const href = script.getAttribute("src");
+          if (href) {
+            recommendations.modulePreloads.push({ href });
+          }
+        });
+
+        // Preconnect to third‑party domains used by scripts, images and stylesheets
+        const resourceSelectors = [
+          ...Array.from(doc.querySelectorAll("script[src]")),
+          ...Array.from(doc.querySelectorAll("img[src]")),
+          ...Array.from(doc.querySelectorAll('link[href][rel="stylesheet"]')),
+        ];
+        resourceSelectors.forEach((el) => {
+          const url = el.getAttribute("src") || el.getAttribute("href");
+          if (!url) return;
+          const domain = extractDomain(url);
+          if (!domain) return;
+          const isSelf = doc.location && domain === extractDomain(doc.location.href);
+          if (isSelf) return;
+          if (!recommendations.preconnects.find((pc) => pc.href === domain)) {
+            recommendations.preconnects.push({ href: domain, crossorigin: false });
+          }
+        });
+
+        return recommendations;
+      }
+
+      /**
+       * Create HTML snippets with recommended head elements and comments.
+       * @param {Object} recs
+       */
+      function buildHeadSnippets(recs) {
+        let snippets = [];
+        // Preconnect hints first
+        recs.preconnects.forEach((pc) => {
+          const attributes = pc.crossorigin ? " crossorigin" : "";
+          snippets.push(
+            `  <!-- Preconnect to third‑party domain -->\n  <link rel="preconnect" href="${pc.href}"${attributes}>`
+          );
+        });
+        // DNS prefetch hints
+        recs.dnsPrefetch.forEach((dn) => {
+          snippets.push(`  <!-- DNS prefetch for domain -->\n  <link rel="dns-prefetch" href="${dn.href}">`);
+        });
+        // Preload hints for critical resources
+        recs.preloads.forEach((pl) => {
+          const asAttr = pl.as ? ` as="${pl.as}"` : "";
+          snippets.push(`  <!-- Preload critical resource -->\n  <link rel="preload" href="${pl.href}"${asAttr}>`);
+        });
+        // Module preload hints for ES module graphs
+        recs.modulePreloads.forEach((mp) => {
+          snippets.push(`  <!-- Module preload for ES module -->\n  <link rel="modulepreload" href="${mp.href}">`);
+        });
+        return snippets.join("\n");
+      }
+
+      /**
+       * Inserts the recommended snippets into the <head> of the original HTML and
+       * generates a unified diff string using the jsdiff library.
+       * @param {string} originalHtml
+       * @param {string} snippets
+       */
+      function applyHeadChanges(originalHtml, snippets) {
+        const headCloseIndex = originalHtml.indexOf("</head>");
+        let modified;
+        if (headCloseIndex !== -1) {
+          modified =
+            originalHtml.slice(0, headCloseIndex) +
+            "\n" +
+            snippets +
+            "\n" +
+            originalHtml.slice(headCloseIndex);
+        } else {
+          // If the page has no head element, create one
+          modified = `<head>\n${snippets}\n</head>\n${originalHtml}`;
+        }
+        const diff = Diff.createTwoFilesPatch(
+          "original.html",
+          "modified.html",
+          originalHtml,
+          modified,
+          "",
+          ""
+        );
+        return { modified, diff };
+      }
+
+      /**
+       * Measures load time by creating a hidden iframe for the given URL.
+       * Resolves with the elapsed time in milliseconds, or null on error.
+       * @param {string} url
+       */
+      function measureLoadTime(url) {
+        return new Promise((resolve) => {
+          const iframe = document.createElement("iframe");
+          iframe.style.display = "none";
+          let startTime;
+          iframe.onload = () => {
+            const endTime = performance.now();
+            document.body.removeChild(iframe);
+            resolve(endTime - startTime);
+          };
+          iframe.onerror = () => {
+            document.body.removeChild(iframe);
+            resolve(null);
+          };
+          startTime = performance.now();
+          iframe.src = url;
+          document.body.appendChild(iframe);
+        });
+      }
+
+      /**
+       * Fetches a page's HTML. It first tries a standard fetch; if that fails
+       * due to CORS the function falls back to the allorigins proxy.
+       * @param {string} url
+       */
+      async function fetchHtml(url) {
+        try {
+          const res = await fetch(url, { mode: "cors" });
+          if (!res.ok) throw new Error();
+          return await res.text();
+        } catch (e) {
+          // Use a public CORS proxy as a fallback. Note that some sites
+          // intentionally block scraping; in those cases this may still fail.
+          const proxyUrl =
+            "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+          const proxyRes = await fetch(proxyUrl);
+          if (!proxyRes.ok) {
+            throw new Error("Failed to fetch page contents");
+          }
+          return await proxyRes.text();
+        }
+      }
+
+      document.getElementById("checkButton").addEventListener("click", async () => {
+        const url = document.getElementById("urlInput").value.trim();
+        const errorDiv = document.getElementById("error");
+        errorDiv.textContent = "";
+        if (!url) {
+          errorDiv.textContent = "Please enter a valid URL.";
+          return;
+        }
+        // Reset previous results
+        document.getElementById("results").style.display = "none";
+        document.getElementById("modifiedHtml").textContent = "";
+        document.getElementById("diffOutput").textContent = "";
+        document.getElementById("downloadPatch").style.display = "none";
+        document.getElementById("timing").textContent = "";
+
+        try {
+          // Measure page load time asynchronously
+          const loadPromise = measureLoadTime(url);
+          // Retrieve HTML (with proxy fallback)
+          const html = await fetchHtml(url);
+          const doc = parseHtml(html);
+          // Set doc.location.href to the requested URL for same‑origin detection
+          Object.defineProperty(doc, "location", { value: { href: url } });
+          const recs = analyseHints(doc);
+          const snippets = buildHeadSnippets(recs);
+          const { modified, diff } = applyHeadChanges(html, snippets);
+          // Show results
+          document.getElementById("results").style.display = "block";
+          document.getElementById("modifiedHtml").textContent = modified;
+          document.getElementById("diffOutput").textContent = diff;
+          // Provide a diff file download link
+          const blob = new Blob([diff], { type: "text/plain" });
+          const urlPatch = URL.createObjectURL(blob);
+          const downloadLink = document.getElementById("downloadPatch");
+          downloadLink.href = urlPatch;
+          downloadLink.style.display = "inline-block";
+          // Display load time if available
+          const loadTime = await loadPromise;
+          if (loadTime != null) {
+            document.getElementById("timing").textContent =
+              `Approximate initial load time: ${loadTime.toFixed(0)} ms`;
+          }
+        } catch (err) {
+          errorDiv.textContent = err.message || "Failed to fetch page.";
+        }
       });
-      doc.querySelectorAll('script[type="module"][src]').forEach(s=>{
-        rec.modules.push({href:s.getAttribute('src')});
-      });
-      return rec;
-    }
-    function buildSnippets(recs){
-      let parts=[];
-      recs.preconnects.forEach(pc=>{parts.push('<link rel="preconnect" href="'+pc.href+'"'+(pc.crossorigin?' crossorigin':'')+'>');});
-      recs.preloads.forEach(pl=>{parts.push('<link rel="preload" href="'+pl.href+'" as="'+pl.as+'">');});
-      recs.modules.forEach(mp=>{parts.push('<link rel="modulepreload" href="'+mp.href+'">');});
-      return parts.join('\n');
-    }
-    function applyChanges(original,snippets){
-      const idx=original.indexOf('</head>');
-      let mod;
-      if(idx>=0) mod=original.slice(0,idx)+'\n'+snippets+'\n'+original.slice(idx);
-      else mod='<head>\n'+snippets+'\n</head>\n'+original;
-      const diff=Diff.createTwoFilesPatch('original.html','modified.html',original,mod,'','');
-      return {mod, diff};
-    }
-    function measureTime(url){
-      return new Promise((resolve,reject)=>{
-        const iframe=document.createElement('iframe');
-        iframe.style.display='none';
-        let start=performance.now();
-        iframe.onload=()=>{resolve(performance.now()-start);iframe.remove();};
-        iframe.onerror=()=>{reject(new Error('load error'));iframe.remove();};
-        iframe.src=url;
-        document.body.appendChild(iframe);
-      });
-    }
-    document.getElementById('checkButton').addEventListener('click', async ()=>{
-      const url=document.getElementById('urlInput').value.trim();
-      const err=document.getElementById('error');
-      err.textContent='';
-      if(!url){ err.textContent='Please enter a URL.'; return;}
-      const results=document.getElementById('results');
-      results.style.display='none';
-      try{
-        const loadPromise=measureTime(url).catch(()=>null);
-        const res=await fetch(url);
-        if(!res.ok) throw new Error('Fetch failed: '+res.status);
-        const text=await res.text();
-        const doc=parseHtml(text);
-        Object.defineProperty(doc,'location',{value:{href:url}});
-        const recs=analyse(doc);
-        const snippets=buildSnippets(recs);
-        const {mod, diff}=applyChanges(text,snippets);
-        document.getElementById('modifiedHtml').textContent=mod;
-        document.getElementById('diffOutput').textContent=diff;
-        const blob=new Blob([diff], {type:'text/plain'});
-        const dl=document.getElementById('downloadPatch');
-        dl.href=URL.createObjectURL(blob);
-        dl.style.display='inline';
-        const t=await loadPromise;
-        if(t!=null) document.getElementById('timing').textContent='Load time: '+Math.round(t)+' ms';
-        results.style.display='block';
-      }catch(e){ err.textContent=e.message; }
-    });
-  </script>
-</body>
+    </script>
+  </body>
 </html>
+
