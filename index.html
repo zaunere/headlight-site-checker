@@ -210,7 +210,7 @@
        * Returns an object with arrays: preloads (with as type), preconnects, dnsPrefetch, modulePreloads.
        * @param {Document} doc
        */
-      function analyseHints(doc) {
+function analyseHints(doc, pageUrl) {
         const recommendations = {
           preloads: [],
           preconnects: [],
@@ -262,7 +262,14 @@
           if (!url) return;
           const domain = extractDomain(url);
           if (!domain) return;
-          const isSelf = doc.location && domain === extractDomain(doc.location.href);
+          // Determine the domain of the page being analysed.  When a page URL is provided
+          // (from the user input), extract its domain and compare it to the resource domain.
+          // Fall back to doc.location when available.  If the domains match, skip adding
+          // preconnect hints for same‑origin resources.
+          const baseDomain = pageUrl
+            ? extractDomain(pageUrl)
+            : (doc.location && doc.location.href ? extractDomain(doc.location.href) : "");
+          const isSelf = baseDomain && domain === baseDomain;
           if (isSelf) return;
           if (!recommendations.preconnects.find((pc) => pc.href === domain)) {
             recommendations.preconnects.push({ href: domain, crossorigin: false });
@@ -415,9 +422,8 @@
           // Retrieve HTML (with proxy fallback)
           const html = await fetchHtml(formattedUrl);
           const doc = parseHtml(html);
-          // Set doc.location.href to the requested URL for same‑origin detection
-          Object.defineProperty(doc, "location", { value: { href: formattedUrl } });
-          const recs = analyseHints(doc);
+          // Analyse the document with the user‑provided page URL for same‑origin detection
+          const recs = analyseHints(doc, formattedUrl);
           const snippets = buildHeadSnippets(recs);
           const { modified, diff } = applyHeadChanges(html, snippets);
           // Show results
