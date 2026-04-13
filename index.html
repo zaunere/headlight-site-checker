@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -398,7 +399,21 @@
           errorDiv.textContent = err.message || "Failed to fetch page.";
         }
       });
+
+      // Automatically run a check when visiting a deep URL path.
+      // For example, opening /headlight-site-checker/example.com will
+      // prefill the input with "example.com" and trigger the check.
+      window.addEventListener('DOMContentLoaded', () => {
+        const segments = window.location.pathname.split('/');
+        const last = segments[segments.length - 1];
+        // Ignore empty string (root) and default page names
+        if (last && last !== 'index.html' && last !== '404.html') {
+          const urlInput = document.getElementById('urlInput');
+          urlInput.value = decodeURIComponent(last);
+          // Programmatically trigger a click to perform the analysis
+          document.getElementById('checkButton').click();
+        }
+      });
     </script>
   </body>
 </html>
-
