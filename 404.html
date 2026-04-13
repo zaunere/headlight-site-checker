@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <!--
   This 404 page is a copy of the Headlight index page. GitHub Pages will serve
@@ -301,7 +302,7 @@
         }
         // Use allorigins to bypass CORS; it follows HTTP redirects
         const proxyUrl =
-          'https://api.allorigins.win/raw?url=' + encodeURIComponent(formatted);
+          'https://corsproxy.io/?url=' + encodeURIComponent(formatted);
         const response = await fetch(proxyUrl);
         if (!response.ok) {
           throw new Error('Failed to fetch page contents');
