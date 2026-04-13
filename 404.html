@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <!--
   This 404 page is a copy of the Headlight index page. GitHub Pages will serve
@@ -310,7 +309,15 @@
         return await response.text();
       }
       document.getElementById("checkButton").addEventListener("click", async () => {
-        const url = document.getElementById("urlInput").value.trim();
+        const rawUrl = document.getElementById("urlInput").value.trim();
+        // Normalise the input by ensuring a protocol (default https). Using rawUrl directly in
+        // measureLoadTime() would treat bare hostnames as relative paths (e.g. "nyphp.org"
+        // would be loaded from the GitHub Pages domain). We'll construct a formatted URL
+        // with an explicit scheme for both fetching and load measurement.
+        let formattedUrl = rawUrl;
+        if (!/^https?:\/\//i.test(formattedUrl)) {
+          formattedUrl = 'https://' + formattedUrl;
+        }
         const errorDiv = document.getElementById("error");
         errorDiv.textContent = "";
         if (!url) {
@@ -326,10 +333,10 @@
         const loadingDiv = document.getElementById('loading');
         loadingDiv.style.display = 'block';
         try {
-          const loadPromise = measureLoadTime(url);
-          const html = await fetchHtml(url);
+          const loadPromise = measureLoadTime(formattedUrl);
+          const html = await fetchHtml(formattedUrl);
           const doc = parseHtml(html);
-          Object.defineProperty(doc, "location", { value: { href: url } });
+          Object.defineProperty(doc, "location", { value: { href: formattedUrl } });
           const recs = analyseHints(doc);
           const snippets = buildHeadSnippets(recs);
           const { modified, diff } = applyHeadChanges(html, snippets);
