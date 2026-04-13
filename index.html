@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -370,8 +369,11 @@
           formatted = 'https://' + formatted;
         }
         // Use allorigins to bypass CORS; it follows HTTP redirects
+        // Use a protocol‑relative URL so that the proxy works regardless of whether this
+        // site is served over HTTP or HTTPS.  This avoids hardcoding an absolute
+        // protocol or domain for the proxy and keeps the page flexible if it moves.
         const proxyUrl =
-          'https://corsproxy.io/?url=' + encodeURIComponent(formatted);
+          '//corsproxy.io/?url=' + encodeURIComponent(formatted);
         const response = await fetch(proxyUrl);
         if (!response.ok) {
           throw new Error('Failed to fetch page contents');
@@ -380,7 +382,15 @@
       }
 
       document.getElementById("checkButton").addEventListener("click", async () => {
-        const url = document.getElementById("urlInput").value.trim();
+        const rawUrl = document.getElementById("urlInput").value.trim();
+        // Normalise the input by ensuring a protocol (default https). Using rawUrl directly in
+        // measureLoadTime() would treat bare hostnames as relative paths (e.g. "nyphp.org"
+        // would be loaded from the GitHub Pages domain). We'll construct a formatted URL
+        // with an explicit scheme for both fetching and load measurement.
+        let formattedUrl = rawUrl;
+        if (!/^https?:\/\//i.test(formattedUrl)) {
+          formattedUrl = 'https://' + formattedUrl;
+        }
         const errorDiv = document.getElementById("error");
         errorDiv.textContent = "";
         if (!url) {
@@ -399,12 +409,12 @@
 
         try {
           // Measure page load time asynchronously
-          const loadPromise = measureLoadTime(url);
+          const loadPromise = measureLoadTime(formattedUrl);
           // Retrieve HTML (with proxy fallback)
-          const html = await fetchHtml(url);
+          const html = await fetchHtml(formattedUrl);
           const doc = parseHtml(html);
           // Set doc.location.href to the requested URL for same‑origin detection
-          Object.defineProperty(doc, "location", { value: { href: url } });
+          Object.defineProperty(doc, "location", { value: { href: formattedUrl } });
           const recs = analyseHints(doc);
           const snippets = buildHeadSnippets(recs);
           const { modified, diff } = applyHeadChanges(html, snippets);
