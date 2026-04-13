@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<!--
+  This 404 page is a copy of the Headlight index page. GitHub Pages will serve
+  this file for any unknown paths, allowing deep-linking to run
+  automatically. See index.html for details.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Headlight – Page Cache &amp; Hint Checker</title>
+    <!-- Dark retro theme styles -->
+    <style>
+      /* Reset and basic layout */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: "Courier New", monospace;
+      }
+      body {
+        background: #0e0e0e;
+        color: #e5e5e5;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 100vh;
+        padding: 2rem;
+        line-height: 1.5;
+      }
+      header {
+        margin-bottom: 2rem;
+        text-align: center;
+      }
+      .logo {
+        font-size: 2.2rem;
+        font-weight: bold;
+        letter-spacing: 0.2rem;
+        color: #ffcc00;
+        margin-bottom: 0.5rem;
+      }
+      .tagline {
+        font-size: 0.9rem;
+        color: #888;
+        font-style: italic;
+      }
+      /* Form styling */
+      .checker {
+        width: 100%;
+        max-width: 700px;
+        background: #1c1c1c;
+        padding: 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 0 8px rgba(255, 255, 255, 0.05);
+      }
+      .checker label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+        color: #ffcc00;
+      }
+      .checker input[type="text"] {
+        width: 100%;
+        padding: 0.5rem;
+        border: none;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+        background: #2a2a2a;
+        color: #fff;
+      }
+      .checker button {
+        background: #ffcc00;
+        color: #1c1c1c;
+        padding: 0.6rem 1.2rem;
+        border: none;
+        border-radius: 4px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+      .checker button:hover {
+        background: #ffd633;
+      }
+      .results {
+        margin-top: 2rem;
+      }
+      .results h2 {
+        margin-bottom: 0.5rem;
+        color: #ffcc00;
+      }
+      .results pre {
+        background: #1c1c1c;
+        padding: 1rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .results .download-link {
+        display: inline-block;
+        margin-top: 0.5rem;
+        color: #ffcc00;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      .error {
+        color: #ff5555;
+        margin-top: 1rem;
+      }
+
+      /* Loading spinner */
+      .loading {
+        display: none;
+        margin-top: 0.5rem;
+        color: #ffcc00;
+        font-style: italic;
+      }
+      .spinner {
+        border: 3px solid #2a2a2a;
+        border-top: 3px solid #ffcc00;
+        border-radius: 50%;
+        width: 16px;
+        height: 16px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+        vertical-align: middle;
+        margin-left: 0.5rem;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+    <!-- Diff library loaded from CDN. Used to generate unified diffs. -->
+    <script src="https://cdn.jsdelivr.net/npm/diff@5.0.0/dist/diff.min.js"></script>
+  </head>
+  <body>
+    <header>
+      <div class="logo">Headlight</div>
+      <div class="tagline">Shine light on your page’s cache and resource hints</div>
+    </header>
+    <div class="checker">
+      <label for="urlInput">Enter a page URL to analyse</label>
+      <input id="urlInput" type="text" placeholder="https://example.com" />
+      <button id="checkButton">Check Page</button>
+      <!-- Initially empty error area. Text will be inserted only on errors -->
+      <div id="error" class="error"></div>
+      <!-- Loading indicator -->
+      <div id="loading" class="loading">
+        Loading<span class="spinner"></span>
+      </div>
+    </div>
+    <div class="results" id="results" style="display: none;">
+      <h2>Analysis &amp; Recommendations</h2>
+      <p id="timing"></p>
+      <h3>Recommended &lt;head&gt; Modifications</h3>
+      <pre id="modifiedHtml"></pre>
+      <a
+        class="download-link"
+        id="downloadPatch"
+        href="#"
+        download="patch.diff"
+        style="display: none;"
+        >Download diff patch</a
+      >
+      <h3>Unified Diff</h3>
+      <pre id="diffOutput"></pre>
+    </div>
+    <script>
+      function parseHtml(html) {
+        const parser = new DOMParser();
+        return parser.parseFromString(html, "text/html");
+      }
+      function extractDomain(url) {
+        try {
+          const u = new URL(url);
+          return u.origin;
+        } catch (e) {
+          return "";
+        }
+      }
+      function analyseHints(doc) {
+        const recommendations = {
+          preloads: [],
+          preconnects: [],
+          dnsPrefetch: [],
+          modulePreloads: [],
+        };
+        const firstImg = doc.querySelector("img[src]");
+        if (firstImg) {
+          const imgSrc = firstImg.getAttribute("src");
+          recommendations.preloads.push({ href: imgSrc, as: "image" });
+        }
+        const linkFonts = Array.from(
+          doc.querySelectorAll(
+            'link[rel="stylesheet"][href*="fonts"], link[rel="stylesheet"][href*="font"]'
+          )
+        );
+        linkFonts.forEach((lnk) => {
+          const href = lnk.getAttribute("href");
+          if (href) {
+            recommendations.preconnects.push({ href: "https://fonts.googleapis.com", crossorigin: false });
+            recommendations.preconnects.push({ href: "https://fonts.gstatic.com", crossorigin: true });
+            recommendations.dnsPrefetch.push({ href: "https://fonts.gstatic.com" });
+            recommendations.dnsPrefetch.push({ href: "https://fonts.googleapis.com" });
+          }
+        });
+        const moduleScripts = Array.from(doc.querySelectorAll('script[type="module"][src]'));
+        moduleScripts.forEach((script) => {
+          const href = script.getAttribute("src");
+          if (href) {
+            recommendations.modulePreloads.push({ href });
+          }
+        });
+        const resourceSelectors = [
+          ...Array.from(doc.querySelectorAll("script[src]")),
+          ...Array.from(doc.querySelectorAll("img[src]")),
+          ...Array.from(doc.querySelectorAll('link[href][rel="stylesheet"]')),
+        ];
+        resourceSelectors.forEach((el) => {
+          const url = el.getAttribute("src") || el.getAttribute("href");
+          if (!url) return;
+          const domain = extractDomain(url);
+          if (!domain) return;
+          const isSelf = doc.location && domain === extractDomain(doc.location.href);
+          if (isSelf) return;
+          if (!recommendations.preconnects.find((pc) => pc.href === domain)) {
+            recommendations.preconnects.push({ href: domain, crossorigin: false });
+          }
+        });
+        return recommendations;
+      }
+      function buildHeadSnippets(recs) {
+        let snippets = [];
+        recs.preconnects.forEach((pc) => {
+          const attributes = pc.crossorigin ? " crossorigin" : "";
+          snippets.push(
+            `  <!-- Preconnect to third‑party domain -->\n  <link rel="preconnect" href="${pc.href}"${attributes}>`
+          );
+        });
+        recs.dnsPrefetch.forEach((dn) => {
+          snippets.push(`  <!-- DNS prefetch for domain -->\n  <link rel="dns-prefetch" href="${dn.href}">`);
+        });
+        recs.preloads.forEach((pl) => {
+          const asAttr = pl.as ? ` as="${pl.as}"` : "";
+          snippets.push(`  <!-- Preload critical resource -->\n  <link rel="preload" href="${pl.href}"${asAttr}>`);
+        });
+        recs.modulePreloads.forEach((mp) => {
+          snippets.push(`  <!-- Module preload for ES module -->\n  <link rel="modulepreload" href="${mp.href}">`);
+        });
+        return snippets.join("\n");
+      }
+      function applyHeadChanges(originalHtml, snippets) {
+        const headCloseIndex = originalHtml.indexOf("</head>");
+        let modified;
+        if (headCloseIndex !== -1) {
+          modified =
+            originalHtml.slice(0, headCloseIndex) +
+            "\n" +
+            snippets +
+            "\n" +
+            originalHtml.slice(headCloseIndex);
+        } else {
+          modified = `<head>\n${snippets}\n</head>\n${originalHtml}`;
+        }
+        const diff = Diff.createTwoFilesPatch(
+          "original.html",
+          "modified.html",
+          originalHtml,
+          modified,
+          "",
+          ""
+        );
+        return { modified, diff };
+      }
+      function measureLoadTime(url) {
+        return new Promise((resolve) => {
+          const iframe = document.createElement("iframe");
+          iframe.style.display = "none";
+          let startTime;
+          iframe.onload = () => {
+            const endTime = performance.now();
+            document.body.removeChild(iframe);
+            resolve(endTime - startTime);
+          };
+          iframe.onerror = () => {
+            document.body.removeChild(iframe);
+            resolve(null);
+          };
+          startTime = performance.now();
+          iframe.src = url;
+          document.body.appendChild(iframe);
+        });
+      }
+      async function fetchHtml(url) {
+        // Ensure the URL has a protocol; default to https
+        let formatted = url.trim();
+        if (!/^https?:\/\//i.test(formatted)) {
+          formatted = 'https://' + formatted;
+        }
+        // Use allorigins to bypass CORS; it follows HTTP redirects
+        const proxyUrl =
+          'https://api.allorigins.win/raw?url=' + encodeURIComponent(formatted);
+        const response = await fetch(proxyUrl);
+        if (!response.ok) {
+          throw new Error('Failed to fetch page contents');
+        }
+        return await response.text();
+      }
+      document.getElementById("checkButton").addEventListener("click", async () => {
+        const url = document.getElementById("urlInput").value.trim();
+        const errorDiv = document.getElementById("error");
+        errorDiv.textContent = "";
+        if (!url) {
+          errorDiv.textContent = "Please enter a valid URL.";
+          return;
+        }
+        document.getElementById("results").style.display = "none";
+        document.getElementById("modifiedHtml").textContent = "";
+        document.getElementById("diffOutput").textContent = "";
+        document.getElementById("downloadPatch").style.display = "none";
+        document.getElementById("timing").textContent = "";
+        // Show loading indicator
+        const loadingDiv = document.getElementById('loading');
+        loadingDiv.style.display = 'block';
+        try {
+          const loadPromise = measureLoadTime(url);
+          const html = await fetchHtml(url);
+          const doc = parseHtml(html);
+          Object.defineProperty(doc, "location", { value: { href: url } });
+          const recs = analyseHints(doc);
+          const snippets = buildHeadSnippets(recs);
+          const { modified, diff } = applyHeadChanges(html, snippets);
+          document.getElementById("results").style.display = "block";
+          document.getElementById("modifiedHtml").textContent = modified;
+          document.getElementById("diffOutput").textContent = diff;
+          const blob = new Blob([diff], { type: "text/plain" });
+          const urlPatch = URL.createObjectURL(blob);
+          const downloadLink = document.getElementById("downloadPatch");
+          downloadLink.href = urlPatch;
+          downloadLink.style.display = "inline-block";
+          const loadTime = await loadPromise;
+          if (loadTime != null) {
+            document.getElementById("timing").textContent =
+              `Approximate initial load time: ${loadTime.toFixed(0)} ms`;
+          }
+        } catch (err) {
+          errorDiv.textContent = err.message || "Failed to fetch page.";
+        } finally {
+          // Hide loading indicator
+          loadingDiv.style.display = 'none';
+        }
+      });
+
+      // Submit on Enter key in the input field
+      document.getElementById('urlInput').addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          document.getElementById('checkButton').click();
+        }
+      });
+      window.addEventListener('DOMContentLoaded', () => {
+        const segments = window.location.pathname.split('/');
+        const last = segments[segments.length - 1];
+        if (last && last !== 'index.html' && last !== '404.html') {
+          const urlInput = document.getElementById('urlInput');
+          urlInput.value = decodeURIComponent(last);
+          document.getElementById('checkButton').click();
+        }
+      });
+    </script>
+  </body>
+</html>
