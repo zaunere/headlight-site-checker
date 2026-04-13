@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -393,7 +394,8 @@
         }
         const errorDiv = document.getElementById("error");
         errorDiv.textContent = "";
-        if (!url) {
+        // Show an error if no input was provided
+        if (!rawUrl) {
           errorDiv.textContent = "Please enter a valid URL.";
           return;
         }
