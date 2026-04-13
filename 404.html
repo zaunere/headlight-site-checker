@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <!--
   This 404 page is a copy of the Headlight index page. GitHub Pages will serve
@@ -300,8 +301,11 @@
           formatted = 'https://' + formatted;
         }
         // Use allorigins to bypass CORS; it follows HTTP redirects
+        // Use a protocol‑relative URL so that the proxy works regardless of whether this
+        // site is served over HTTP or HTTPS.  This avoids hardcoding an absolute
+        // protocol or domain for the proxy and keeps the page flexible if it moves.
         const proxyUrl =
-          'https://corsproxy.io/?url=' + encodeURIComponent(formatted);
+          '//corsproxy.io/?url=' + encodeURIComponent(formatted);
         const response = await fetch(proxyUrl);
         if (!response.ok) {
           throw new Error('Failed to fetch page contents');
@@ -320,7 +324,8 @@
         }
         const errorDiv = document.getElementById("error");
         errorDiv.textContent = "";
-        if (!url) {
+        // Show an error if no input was provided
+        if (!rawUrl) {
           errorDiv.textContent = "Please enter a valid URL.";
           return;
         }
