@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <!--
   This 404 page is a copy of the Headlight index page. GitHub Pages will serve
@@ -10,6 +9,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Headlight – Page Cache &amp; Hint Checker</title>
+    <!-- Favicon: embedded PNG icon (64x64) -->
+    <link rel="icon" type="image/png" sizes="64x64" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAABOUlEQVR4nO2ZQRLCMAhFreM6vVMP7p30BC4yk0W17YcECMJbdWE//iE0hCyllJtn7tZ/oJc0YI17Aw9R9dfzXR/WTepT4DacCaNGBNJAPtm6gAHgs1UBV1PJBiLUg3utO63JVOYlPfvfw9ZADUJeUHUUD2b9TAuTp7aZ2IgN0HoYh3ii1eT2EcieC9EyEDPyNJQOr8yPuAXF/J0+dsZHIeGMqRduKGXBkwlMkGpIuYqh9sCWn2QiDBMjAhYc4D0+LewL6Z01wnPbSmw30G3Bvgn8ikGX8im5NIBqTPYrxYkTIwJzQDOqtIdioxGzlWGUqOVTByrDJSv2sqsW6lvx6+RaSmEkcT8B4PRyK4hxg3NH91R0ZaMApvoTVQtTR7IfE7MlHyPOCHNGBNGrCGfFM/G+4zkAas+QDEUpMET5bb0gAAAABJRU5ErkJggg==">
+    <!-- Highlight.js for diff syntax highlighting (scheme relative) -->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/diff.min.js"></script>
     <!-- Dark retro theme styles -->
     <style>
       /* Reset and basic layout */
@@ -155,8 +160,9 @@
     <div class="results" id="results" style="display: none;">
       <h2>Analysis &amp; Recommendations</h2>
       <p id="timing"></p>
-      <h3>Recommended &lt;head&gt; Modifications</h3>
-      <pre id="modifiedHtml"></pre>
+      <h3>Unified Diff</h3>
+      <!-- The unified diff will be syntax highlighted using highlight.js (language diff) -->
+      <pre id="diffOutput" class="language-diff"></pre>
       <a
         class="download-link"
         id="downloadPatch"
@@ -165,8 +171,16 @@
         style="display: none;"
         >Download diff patch</a
       >
-      <h3>Unified Diff</h3>
-      <pre id="diffOutput"></pre>
+      <h3>Modified HTML</h3>
+      <!-- Provide a download link for the entire modified HTML rather than displaying it inline -->
+      <a
+        class="download-link"
+        id="downloadModified"
+        href="#"
+        download="modified.html"
+        style="display: none;"
+        >Download modified HTML</a
+      >
     </div>
     <script>
       function parseHtml(html) {
@@ -329,6 +343,11 @@ function analyseHints(doc, pageUrl) {
         if (!/^https?:\/\//i.test(formattedUrl)) {
           formattedUrl = 'https://' + formattedUrl;
         }
+        // Update the input field if a protocol has been added. Do not change if the user
+        // explicitly specified http:// or https://.
+        if (formattedUrl !== rawUrl) {
+          document.getElementById("urlInput").value = formattedUrl;
+        }
         const errorDiv = document.getElementById("error");
         errorDiv.textContent = "";
         // Show an error if no input was provided
@@ -337,9 +356,11 @@ function analyseHints(doc, pageUrl) {
           return;
         }
         document.getElementById("results").style.display = "none";
-        document.getElementById("modifiedHtml").textContent = "";
+        // Clear previous diff
         document.getElementById("diffOutput").textContent = "";
+        // Hide download links
         document.getElementById("downloadPatch").style.display = "none";
+        document.getElementById("downloadModified").style.display = "none";
         document.getElementById("timing").textContent = "";
         // Show loading indicator
         const loadingDiv = document.getElementById('loading');
@@ -353,13 +374,24 @@ function analyseHints(doc, pageUrl) {
           const snippets = buildHeadSnippets(recs);
           const { modified, diff } = applyHeadChanges(html, snippets);
           document.getElementById("results").style.display = "block";
-          document.getElementById("modifiedHtml").textContent = modified;
-          document.getElementById("diffOutput").textContent = diff;
-          const blob = new Blob([diff], { type: "text/plain" });
-          const urlPatch = URL.createObjectURL(blob);
-          const downloadLink = document.getElementById("downloadPatch");
-          downloadLink.href = urlPatch;
-          downloadLink.style.display = "inline-block";
+          // Write diff text and apply syntax highlighting
+          const diffPre = document.getElementById("diffOutput");
+          diffPre.textContent = diff;
+          if (typeof hljs !== 'undefined') {
+            hljs.highlightElement(diffPre);
+          }
+          // Provide a diff file download link
+          const diffBlob = new Blob([diff], { type: "text/plain" });
+          const urlPatch = URL.createObjectURL(diffBlob);
+          const downloadPatch = document.getElementById("downloadPatch");
+          downloadPatch.href = urlPatch;
+          downloadPatch.style.display = "inline-block";
+          // Provide a modified HTML download link
+          const modBlob = new Blob([modified], { type: "text/html" });
+          const modUrl = URL.createObjectURL(modBlob);
+          const downloadMod = document.getElementById("downloadModified");
+          downloadMod.href = modUrl;
+          downloadMod.style.display = "inline-block";
           const loadTime = await loadPromise;
           if (loadTime != null) {
             document.getElementById("timing").textContent =
